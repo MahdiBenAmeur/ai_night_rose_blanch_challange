@@ -77,7 +77,7 @@ text is "answer-shaped".
 ------------------------------------------------------------------------
 
 
-## Fixed constraints (enforced)
+## Fixed constraints 
 
 -   Embedding model: `sentence-transformers/all-MiniLM-L6-v2`
 -   Embedding dimension: `384`
