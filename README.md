@@ -169,11 +169,11 @@ Then run the main entrypoint:
 
 python main.py
 
-The `main.py` file contains the high-level APIs to: - build the vector
-store\
-- query the local vector store\
+The `main.py` file contains the high-level APIs to: 
+- build the vector store
+- query the local vector store
 - push the vector store to PostgreSQL (after providing a full
-DATABASE_URL in config)\
+DATABASE_URL in config)
 - query PostgreSQL using cosine similarity
 
 ------------------------------------------------------------------------
