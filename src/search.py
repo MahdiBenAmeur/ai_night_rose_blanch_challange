@@ -8,6 +8,11 @@ from typing import Any, Sequence
 
 import faiss
 import numpy as np
+from pydantic import BaseModel, Field
+try:
+    from mistralai import Mistral
+except ModuleNotFoundError:
+    Mistral = None
 try:
     import psycopg
 except ModuleNotFoundError:
@@ -19,6 +24,20 @@ from src.embed import embed_query
 FAISS_INDEX_PATH = PROJECT_ROOT / "data" / "faiss.index"
 FAISS_MAPPING_PATH = PROJECT_ROOT / "data" / "faiss_mapping.jsonl"
 FAISS_VECTORS_PATH = PROJECT_ROOT / "data" / "faiss_vectors.npy"
+MAX_AGENT_SEARCH_ATTEMPTS = 3
+
+
+class SearchIterationDecision(BaseModel):
+    """Structured decision for a single search iteration."""
+
+    satisfied: bool = Field(..., description="Whether the current search results satisfy the user query.")
+    reformulated_query: str = Field(..., description="A rewritten query to improve retrieval when needed.")
+
+
+class CollectionSelectionDecision(BaseModel):
+    """Structured decision used to choose the best attempt collection."""
+
+    selected_collection_number: int = Field(..., description="One-based collection number: 1, 2, or 3.")
 
 
 def _normalize_query(vector: Sequence[float] | np.ndarray) -> np.ndarray:
@@ -52,7 +71,7 @@ def _vector_literal(vector: Sequence[float] | np.ndarray) -> str:
     return "[" + ",".join(f"{float(value):.8f}" for value in array) + "]"
 
 
-def _query_postgres(question: str, k: int ) -> list[dict[str, Any]]:
+def _query_postgres(question: str, k: int) -> list[dict[str, Any]]:
     if psycopg is None:
         raise ModuleNotFoundError("psycopg is required for PostgreSQL search.")
     settings = get_settings(backend="postgres")
@@ -95,6 +114,131 @@ def _search_local(question: str, k: int) -> list[dict[str, Any]]:
     return results
 
 
+def _run_search_backend(question: str, backend: str, k: int) -> list[dict[str, Any]]:
+    if backend == "local":
+        return _search_local(question, k)
+    if backend == "postgres":
+        return _query_postgres(question, k)
+    raise ValueError(f"Unknown backend: {backend}")
+
+
+def _print_results(results: list[dict[str, Any]]) -> None:
+    for index, res in enumerate(results, start=1):
+        print(f"Resultat {index}")
+        print(f"Texte : {res['texte_fragment']}")
+        print(f"Score : {res['score']}")
+
+
+def _build_iteration_prompt(question: str, results: list[dict[str, Any]]) -> str:
+    serialized_results = [
+        {
+            "result_number": index + 1,
+            "texte_fragment": result["texte_fragment"],
+            "score": result["score"],
+        }
+        for index, result in enumerate(results)
+    ]
+    return (
+        "Evaluate these semantic search results for the user question.\n"
+        "If the results are satisfactory, mark satisfied as true.\n"
+        "If they are not satisfactory, provide a better reformulated query.\n"
+        "Do not rewrite, quote, or reproduce any chunk text in your decision.\n\n"
+        f"Question:\n{question}\n\n"
+        f"Results:\n{json.dumps(serialized_results, ensure_ascii=False, indent=2)}"
+    )
+
+
+def _build_collection_selection_prompt(
+    question: str,
+    collections: list[list[dict[str, Any]]],
+) -> str:
+    serialized_collections = []
+    for index, collection in enumerate(collections, start=1):
+        serialized_collections.append(
+            {
+                "collection_number": index,
+                "results": collection,
+            }
+        )
+    return (
+        "Choose the best semantic-search collection for the user question.\n"
+        "Each collection is one full search attempt.\n"
+        "Prefer the collection where the most logical and relevant chunk is ranked first.\n"
+        "Do not rewrite or reproduce chunk text in your decision.\n"
+        "Return only the best collection number.\n\n"
+        f"Question:\n{question}\n\n"
+        f"Collections:\n{json.dumps(serialized_collections, ensure_ascii=False, indent=2)}"
+    )
+
+
+def _agent_decide_iteration(
+    question: str,
+    results: list[dict[str, Any]],
+) -> SearchIterationDecision:
+    if Mistral is None:
+        raise ModuleNotFoundError("mistralai is required for agent-assisted search.")
+
+    settings = get_settings(require_mistral=True)
+    client = Mistral(api_key=settings.mistral_api_key)
+    response = client.chat.parse(
+        model=settings.mistral_model,
+        temperature=0.0,
+        response_format=SearchIterationDecision,
+        messages=[
+            {
+                "role": "system",
+                "content": (
+                    "You evaluate retrieval results. "
+                    "If the results are insufficient, rewrite the query to improve retrieval. "
+                    "Never reproduce chunk text in your answer."
+                ),
+            },
+            {
+                "role": "user",
+                "content": _build_iteration_prompt(question, results),
+            },
+        ],
+    )
+    parsed = response.choices[0].message.parsed
+    if parsed is None:
+        raise ValueError("The search agent returned no structured decision.")
+    return parsed
+
+
+def _agent_select_collection(
+    question: str,
+    collections: list[list[dict[str, Any]]],
+) -> CollectionSelectionDecision:
+    if Mistral is None:
+        raise ModuleNotFoundError("mistralai is required for agent-assisted search.")
+
+    settings = get_settings(require_mistral=True)
+    client = Mistral(api_key=settings.mistral_api_key)
+    response = client.chat.parse(
+        model=settings.mistral_model,
+        temperature=0.0,
+        response_format=CollectionSelectionDecision,
+        messages=[
+            {
+                "role": "system",
+                "content": (
+                    "You choose the best retrieval collection among multiple search attempts. "
+                    "Prefer the collection where the strongest and most logical chunk is ranked first. "
+                    "Only return the best collection number."
+                ),
+            },
+            {
+                "role": "user",
+                "content": _build_collection_selection_prompt(question, collections),
+            },
+        ],
+    )
+    parsed = response.choices[0].message.parsed
+    if parsed is None:
+        raise ValueError("The search agent returned no collection-selection decision.")
+    return parsed
+
+
 def search_topk(question: str, backend: str) -> list[dict[str, Any]]:
     """Search the selected backend and return the fixed top-k results.
 
@@ -108,17 +252,50 @@ def search_topk(question: str, backend: str) -> list[dict[str, Any]]:
     """
 
     settings = get_settings(backend=backend if backend == "postgres" else None)
-    k = settings.top_k
-
-    if backend == "local":
-        results =  _search_local(question, k)
-
-    elif backend == "postgres":
-        results = _query_postgres(question, k)
-    else:
-        raise ValueError(f"Unknown backend: {backend}")
-    for index , res in enumerate(results , start=1):
-        print(f"Résultat {index}")
-        print(f"Texte : {res['texte_fragment']}")
-        print(f"Score : {res['score']}")
+    results = _run_search_backend(question, backend, settings.top_k)
+    _print_results(results)
     return results
+
+
+def search_topk_with_agent(question: str, backend: str) -> list[dict[str, Any]]:
+    """Search with an LLM evaluator that can reformulate the query up to three times.
+
+    The function first runs a normal search. The retrieved results are then
+    evaluated by the Mistral model. If the model is not satisfied, it rewrites
+    the query and the search is repeated. If no satisfactory result set is
+    found, the function returns the full result set from the last evaluated
+    search iteration.
+
+    The returned items keep the exact same shape as ``search_topk``.
+    """
+
+    settings = get_settings(backend=backend if backend == "postgres" else None, require_mistral=True)
+    current_query = question
+    attempted_collections: list[list[dict[str, Any]]] = []
+
+    for _ in range(MAX_AGENT_SEARCH_ATTEMPTS):
+        results = _run_search_backend(current_query, backend, settings.top_k)
+        if not results:
+            break
+
+        attempted_collections.append(results)
+        decision = _agent_decide_iteration(current_query, results)
+
+        if decision.satisfied:
+            _print_results(results)
+            return results
+
+        next_query = decision.reformulated_query.strip()
+        if not next_query or next_query == current_query:
+            break
+        current_query = next_query
+
+    if not attempted_collections:
+        _print_results([])
+        return []
+
+    selection = _agent_select_collection(question, attempted_collections)
+    collection_index = max(1, min(selection.selected_collection_number, len(attempted_collections))) - 1
+    final_results = attempted_collections[collection_index]
+    _print_results(final_results)
+    return final_results

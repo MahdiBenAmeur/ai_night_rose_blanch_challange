@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from src.config import DATA_DIR
 from src.db import build_vs, push_vs_to_postgres
-from src.search import search_topk
+from src.search import search_topk , search_topk_with_agent
 
 
 def main() -> None:
@@ -25,11 +25,18 @@ def main() -> None:
     # Search in the local vector store.
     # Make sure the local VS already exists before using this block.
     # you could search locally by passing "local" to the backend paramater or "postgres" for searching in postgres
+    # i added a function to search with the agent , it optimizes the search results by rewriting the query in case the initial user query didnt
+    # return a good enaugh results , the agents assess the returned results and choses to return if logical or rewrite the query up to 3 times enhancing the end results
     query = "What is the package of BVZyme GOX 110?"
     local_results = search_topk(
          question=query,
          backend="local",
     )
+
+    #local_results = search_topk_with_agent(
+    #     question=query,
+    #     backend="local",
+    #)
 
     # Push the local vector store into PostgreSQL.
     # This initializes the embeddings table if needed, then inserts rows.
