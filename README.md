@@ -164,11 +164,11 @@ test_search_smoke.py
 
 Install dependencies:
 
-pip install -r requirements.txt
+`pip install -r requirements.txt`
 
 Then run the main entrypoint:
 
-python main.py
+`python main.py`
 
 The `main.py` file contains the high-level APIs to: 
 - build the vector store
