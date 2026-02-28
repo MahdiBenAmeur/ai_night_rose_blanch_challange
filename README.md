@@ -285,14 +285,5 @@ The default search behavior remains the standard vector similarity
 search.
 
 
-## Future suggestion (model choice)
-
-The imposed embedding model is `all-MiniLM-L6-v2`. For a bilingual
-(French/English) setting, a multilingual embedding model like
-`multilingual-e5-base` or `multilingual-e5-large` would likely be more
-suitable in real deployment.
-
-(This is only a recommendation; the prototype follows the imposed model
-constraint.)
 
 ------------------------------------------------------------------------
