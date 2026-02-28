@@ -40,6 +40,7 @@ Your task:
 
 Rules:
 - Each question must be answerable only from the document text.
+- Each question should be as specific as possible , make sure to add the file title too 
 - Each answer must be as short as possible while preserving the fact.
 - Questions should be useful for semantic retrieval.
 - Return structured output only.
