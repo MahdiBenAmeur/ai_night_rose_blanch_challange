@@ -8,7 +8,7 @@ of technical ingredient/additive documents.
 I implemented a full RAG pipeline (PDF → chunks → embeddings → vector
 store → search), with two retrieval backends:
 
--   Local vector store with FAISS\
+-   Local vector store with FAISS
 -   PostgreSQL + pgvector (same schema as described in the statement)
 
 ## Important note about the provided PostgreSQL database
@@ -18,8 +18,9 @@ PostgreSQL database. However, in the provided Drive content, I could not
 find any database credentials (even read-only) or a DB dump to test
 against.
 
-Because of that, I chose to: - build my own vector store from the
-provided PDF dataset, and\
+Because of that, I chose to: 
+- build my own vector store from the
+provided PDF dataset, and
 - keep full compatibility with the expected PostgreSQL schema so the
 same search module can query Postgres once credentials are available.
 
@@ -34,17 +35,17 @@ example:
 recommandées d'alpha-amylase, xylanase et d'Acide ascorbique ?
 
 **Expected outputs (indicative)** - "Dosage recommandé : 0.005% à 0.02%
-du poids de farine."\
-- "Alpha-amylase : utilisation entre 5 et 20 ppm selon la farine."\
+du poids de farine."
+- "Alpha-amylase : utilisation entre 5 et 20 ppm selon la farine."
 - "Xylanase : améliore l'extensibilité de la pâte..."
 
 A basic approach that embeds document text chunks as-is tends to
 struggle here:
 
 -   A very short answer like "Dosage recommandé : 0.005% à 0.02%..."
-    contains little context.\
+    contains little context.
 -   Embedding such a short fragment alone can drift away from the user
-    question embedding.\
+    question embedding.
 -   In practice, stronger embeddings often need more context to align
     reliably with rich questions.
 
@@ -58,16 +59,16 @@ by question-like meaning.
 To produce answer fragments that match the expected format while still
 retrieving well:
 
-1.  Each document is passed to an LLM (Mistral).\
+1.  Each document is passed to an LLM (Mistral).
 2.  The LLM generates many question/answer pairs that collectively cover
-    the document content.\
+    the document content.
 3.  During indexing:
-    -   I embed the generated question.\
-    -   I store the generated answer.\
+    -   I embed the generated question.
+    -   I store the generated answer.
 4.  During retrieval:
-    -   The user query is embedded.\
+    -   The user query is embedded.
     -   Similarity is computed against the embeddings of the generated
-        questions.\
+        questions.
     -   The system returns the stored answer text (short, specific).
 
 This way, the indexed vectors are "question-shaped", and the returned
@@ -89,12 +90,12 @@ constraint.)
 
 ## Fixed constraints (enforced)
 
--   Embedding model: `sentence-transformers/all-MiniLM-L6-v2`\
--   Embedding dimension: `384`\
--   Similarity: cosine similarity\
--   Returned results: Top K = 3\
+-   Embedding model: `sentence-transformers/all-MiniLM-L6-v2`
+-   Embedding dimension: `384`
+-   Similarity: cosine similarity
+-   Returned results: Top K = 3
 -   Returned fields (for each result):
-    -   `texte_fragment`\
+    -   `texte_fragment`
     -   `score`
 
 ------------------------------------------------------------------------
@@ -103,23 +104,23 @@ constraint.)
 
 ### 1) Local FAISS backend
 
--   Uses FAISS `IndexFlatIP`\
+-   Uses FAISS `IndexFlatIP`
 -   Vectors are L2-normalized, so inner product behaves like cosine
-    similarity\
+    similarity
 -   Stores:
-    -   `data/faiss.index`\
-    -   `data/faiss_mapping.jsonl`\
+    -   `data/faiss.index`
+    -   `data/faiss_mapping.jsonl`
     -   `data/faiss_vectors.npy`
 
 ### 2) PostgreSQL + pgvector backend
 
 Matches the expected schema:
 
--   Table: `embeddings`\
+-   Table: `embeddings`
 -   Columns:
-    -   `id` (primary key)\
-    -   `id_document` (int)\
-    -   `texte_fragment` (text)\
+    -   `id` (primary key)
+    -   `id_document` (int)
+    -   `texte_fragment` (text)
     -   `vecteur` `VECTOR(384)`
 
 Cosine scoring is computed as:
