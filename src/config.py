@@ -52,10 +52,10 @@ def get_settings(backend: str | None = None, require_mistral: bool = False) -> S
 
     top_k = _read_int_env("TOP_K", REQUIRED_TOP_K)
     embed_dim = _read_int_env("EMBED_DIM", REQUIRED_EMBED_DIM)
-    database_url = os.getenv("DATABASE_URL")
+    database_url = os.getenv("DATABASE_URL" ,"")
     model_cache_dir = Path(os.getenv("MODEL_CACHE_DIR", DEFAULT_MODEL_CACHE_DIR))
-    mistral_api_key = os.getenv("MISTRAL_API_KEY")
-    mistral_model = os.getenv("MISTRAL_MODEL")
+    mistral_api_key = os.getenv("MISTRAL_API_KEY" ,"")
+    mistral_model = os.getenv("MISTRAL_MODEL","")
 
     if top_k != REQUIRED_TOP_K:
         raise ValueError(f"TOP_K is fixed to {REQUIRED_TOP_K}.")
