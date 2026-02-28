@@ -1,5 +1,7 @@
 faiss-cpu
+mistralai
 numpy
+pydantic
 psycopg[binary]
 python-dotenv
 pgvector

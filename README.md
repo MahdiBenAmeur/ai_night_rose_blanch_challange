@@ -1,6 +1,6 @@
 # Semantic Search Prototype
 
-This scaffold provides a minimal RAG-oriented semantic search prototype with two backends:
+This project provides a minimal RAG-oriented semantic search prototype with two backends:
 
 - Local vector search with FAISS
 - PostgreSQL with pgvector
@@ -16,7 +16,6 @@ The implementation enforces these fixed constraints in code:
 ## Layout
 
 ```text
-project/
   README.md
   requirements.txt
   .env.example
@@ -41,9 +40,9 @@ project/
 
 ## Notes
 
-- `src/parser.py`, `src/chunking.py`, and `src/embed.py` are placeholders by design.
-- The model is fixed to `all-MiniLM-L6-v2`, but the placeholder embedding functions intentionally do not download or execute it yet.
-- The runnable scripts fall back to deterministic mock fragments and normalized mock vectors until real parsing/chunking/embedding is added.
+- The embedding model is fixed to `all-MiniLM-L6-v2`.
+- The local build pipeline is: parse PDFs -> generate QA chunks -> embed chunk questions -> save FAISS artifacts.
+- The PostgreSQL load pipeline reads the local artifacts and inserts them into the `embeddings` table.
 
 ## Setup
 
@@ -55,7 +54,9 @@ Optionally create a `.env` file from `.env.example`.
 
 ## PostgreSQL / pgvector
 
-Run the schema script:
+Schema initialization is defined in `scripts/init_db.sql` and is executed automatically by `src.db.push_vs_to_postgres()`.
+
+You can still run the SQL manually:
 
 ```bash
 psql "$DATABASE_URL" -f scripts/init_db.sql
@@ -72,7 +73,7 @@ python scripts/demo_query.py
 
 ## PostgreSQL demo
 
-Set `DATABASE_URL`, initialize the schema, then:
+Set `DATABASE_URL`, then:
 
 ```bash
 python scripts/load_to_postgres.py

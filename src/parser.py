@@ -1,3 +1,5 @@
+"""PDF parsing utilities that convert source documents into structured text."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -73,9 +75,15 @@ def _extract_page_markdown(page: fitz.Page) -> str:
 def parse_pdfs(input_dir: str | Path = DATA_DIR) -> list[dict]:
     """Parse PDF files into Markdown-like text plus metadata.
 
-    Returns one item per PDF file. Each item includes the extracted document
-    text in ``text`` and a metadata dictionary describing the source file.
-    Table regions are converted to Markdown tables when PyMuPDF detects them.
+    The parser walks through all PDF files in the input directory, extracts the
+    text page by page, preserves rough document structure, and converts detected
+    tables to Markdown.
+
+    Args:
+        input_dir: Directory containing PDF files to parse.
+
+    Returns:
+        A list of document dictionaries with ``text`` and ``metadata`` fields.
     """
 
     base_dir = Path(input_dir)
